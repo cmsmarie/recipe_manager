@@ -44,9 +44,17 @@ with st.form("add_link_form"):
     submitted = st.form_submit_button("Link Ingredient to Recipe")
 
     if submitted:
-        errors = []
-        if not quantity.strip():
-            errors.append("**Quantity** is required.")
+    errors = []
+    if not quantity.strip():
+        errors.append("**Quantity** is required.")
+    else:
+        # Check if quantity is a number and if so, make sure it's positive
+        try:
+            qty_num = float(quantity.strip().split()[0])
+            if qty_num <= 0:
+                errors.append("**Quantity** must be a positive number.")
+        except ValueError:
+            pass  # quantity is text like "2 cups" or "1 tbsp" which is fine
 
         if errors:
             for err in errors:
