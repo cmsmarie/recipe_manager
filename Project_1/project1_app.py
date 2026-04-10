@@ -25,26 +25,40 @@ try:
     cur.execute("SELECT COUNT(*) FROM recipe_ingredients;")
     link_count = cur.fetchone()[0]
 
-    col1, col2, col3 = st.columns(3)
+    cur.execute("SELECT COUNT(*) FROM difficulty;")
+    difficulty_count = cur.fetchone()[0]
+
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("🍲 Recipes", recipe_count)
     col2.metric("🥕 Ingredients", ingredient_count)
-    col3.metric("🔗 Recipe-Ingredient Links", link_count)
+    col3.metric("🔗 Links", link_count)
+    col4.metric("⚡ Difficulty Levels", difficulty_count)
 
     st.markdown("---")
     st.subheader("📋 All Recipes & Ingredients")
     cur.execute("""
-        SELECT r.recipe_name, r.cuisine, r.cook_time_minutes, r.difficulty, i.name, ri.quantity
+        SELECT r.recipe_name, r.cuisine, r.cook_time_minutes, d.level, i.name, ri.quantity, ri.linked_at
         FROM recipe_ingredients ri
         JOIN recipes r ON ri.recipe_id = r.id
         JOIN ingredients i ON ri.ingredient_id = i.id
+        JOIN difficulty d ON r.difficulty_id = d.id
         ORDER BY r.recipe_name ASC;
     """)
     rows = cur.fetchall()
 
     if rows:
-        st.table(
-            [{"Recipe": r[0], "Cuisine": r[1], "Cook Time (min)": r[2], "Difficulty": r[3], "Ingredient": r[4], "Quantity": r[5]} for r in rows]
-        )
+        st.table([
+            {
+                "Recipe": r[0],
+                "Cuisine": r[1],
+                "Cook Time (min)": r[2],
+                "Difficulty": r[3],
+                "Ingredient": r[4],
+                "Quantity": r[5],
+                "Linked At": r[6].strftime("%Y-%m-%d %H:%M") if r[6] else ""
+            }
+            for r in rows
+        ])
     else:
         st.info("No data yet. Use the sidebar to add recipes and ingredients!")
 
