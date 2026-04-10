@@ -8,27 +8,54 @@ def get_connection():
 
 st.title("📋 Manage Recipes")
 
+# ── Load difficulty levels from DB (dynamic dropdown) ────────────────────────
+
+try:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, level FROM difficulty ORDER BY id;")
+    difficulty_rows = cur.fetchall()
+    cur.close()
+    conn.close()
+except Exception as e:
+    st.error(f"Error loading difficulty levels: {e}")
+    st.stop()
+
+difficulty_options = {row[1]: row[0] for row in difficulty_rows}
+
 # ── Add Recipe Form ──────────────────────────────────────────────────────────
 
+st.subheader("Add a New Recipe")
 with st.form("add_recipe_form"):
-    recipe_name = st.text_input("Recipe Name")
+    recipe_name = st.text_input("Recipe Name *")
     description = st.text_area("Description")
-    cuisine = st.text_input("Cuisine")
-    cook_time = st.number_input("Cook Time (minutes)", min_value=1, step=1)
-    difficulty = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"])
+    cuisine = st.text_input("Cuisine *")
+    cook_time = st.number_input("Cook Time (minutes) *", min_value=1, step=1)
+    difficulty = st.selectbox("Difficulty *", list(difficulty_options.keys()))
     submitted = st.form_submit_button("Add Recipe")
 
     if submitted:
-        if recipe_name and cuisine and difficulty:
+        errors = []
+        if not recipe_name.strip():
+            errors.append("**Recipe Name** is required.")
+        if not cuisine.strip():
+            errors.append("**Cuisine** is required.")
+        if cook_time < 1:
+            errors.append("**Cook Time** must be a positive number.")
+
+        if errors:
+            for err in errors:
+                st.error(err)
+        else:
             try:
                 conn = get_connection()
                 cur = conn.cursor()
                 cur.execute(
                     """
-                    INSERT INTO recipes (recipe_name, description, cuisine, cook_time_minutes, difficulty)
+                    INSERT INTO recipes (recipe_name, description, cuisine, cook_time_minutes, difficulty_id)
                     VALUES (%s, %s, %s, %s, %s);
                     """,
-                    (recipe_name, description, cuisine, cook_time, difficulty)
+                    (recipe_name.strip(), description.strip(), cuisine.strip(), cook_time, difficulty_options[difficulty])
                 )
                 conn.commit()
                 cur.close()
@@ -36,19 +63,32 @@ with st.form("add_recipe_form"):
                 st.success(f"✅ Recipe '{recipe_name}' added successfully!")
             except Exception as e:
                 st.error(f"Error: {e}")
-        else:
-            st.warning("Please fill in all required fields.")
 
 st.markdown("---")
 
-# ── Current Recipes Table with Edit and Delete ───────────────────────────────
+# ── Search/Filter ────────────────────────────────────────────────────────────
 
 st.subheader("Current Recipes")
+search = st.text_input("🔍 Search recipes by name or cuisine")
 
 try:
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, recipe_name, cuisine, cook_time_minutes, difficulty, description FROM recipes ORDER BY recipe_name;")
+    if search.strip():
+        cur.execute("""
+            SELECT r.id, r.recipe_name, r.cuisine, r.cook_time_minutes, d.level, r.description
+            FROM recipes r
+            JOIN difficulty d ON r.difficulty_id = d.id
+            WHERE r.recipe_name ILIKE %s OR r.cuisine ILIKE %s
+            ORDER BY r.recipe_name;
+        """, (f"%{search.strip()}%", f"%{search.strip()}%"))
+    else:
+        cur.execute("""
+            SELECT r.id, r.recipe_name, r.cuisine, r.cook_time_minutes, d.level, r.description
+            FROM recipes r
+            JOIN difficulty d ON r.difficulty_id = d.id
+            ORDER BY r.recipe_name;
+        """)
     recipes = cur.fetchall()
     cur.close()
     conn.close()
@@ -57,7 +97,7 @@ except Exception as e:
     st.stop()
 
 if not recipes:
-    st.info("No recipes yet.")
+    st.info("No recipes found.")
 else:
     for r in recipes:
         rid, rname, rcuisine, rcook, rdiff, rdesc = r
@@ -65,25 +105,42 @@ else:
 
             # ── Edit Form ────────────────────────────────────────────────────
             with st.form(f"edit_recipe_{rid}"):
-                new_name = st.text_input("Recipe Name", value=rname)
+                new_name = st.text_input("Recipe Name *", value=rname)
                 new_desc = st.text_area("Description", value=rdesc or "")
-                new_cuisine = st.text_input("Cuisine", value=rcuisine)
-                new_cook = st.number_input("Cook Time (minutes)", min_value=1, step=1, value=rcook)
-                new_diff = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"], index=["Easy", "Medium", "Hard"].index(rdiff))
+                new_cuisine = st.text_input("Cuisine *", value=rcuisine)
+                new_cook = st.number_input("Cook Time (minutes) *", min_value=1, step=1, value=rcook)
+                new_diff = st.selectbox(
+                    "Difficulty *",
+                    list(difficulty_options.keys()),
+                    index=list(difficulty_options.keys()).index(rdiff)
+                )
                 update = st.form_submit_button("💾 Save Changes")
 
                 if update:
-                    if new_name and new_cuisine and new_diff:
+                    errors = []
+                    if not new_name.strip():
+                        errors.append("**Recipe Name** is required.")
+                    if not new_cuisine.strip():
+                        errors.append("**Cuisine** is required.")
+                    if new_cook < 1:
+                        errors.append("**Cook Time** must be a positive number.")
+
+                    if errors:
+                        for err in errors:
+                            st.error(err)
+                    else:
                         try:
                             conn = get_connection()
                             cur = conn.cursor()
                             cur.execute(
                                 """
                                 UPDATE recipes
-                                SET recipe_name=%s, description=%s, cuisine=%s, cook_time_minutes=%s, difficulty=%s
+                                SET recipe_name=%s, description=%s, cuisine=%s,
+                                    cook_time_minutes=%s, difficulty_id=%s
                                 WHERE id=%s;
                                 """,
-                                (new_name, new_desc, new_cuisine, new_cook, new_diff, rid)
+                                (new_name.strip(), new_desc.strip(), new_cuisine.strip(),
+                                 new_cook, difficulty_options[new_diff], rid)
                             )
                             conn.commit()
                             cur.close()
@@ -92,19 +149,20 @@ else:
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
-                    else:
-                        st.warning("Please fill in all required fields.")
 
-            # ── Delete Button ────────────────────────────────────────────────
-            if st.button(f"🗑️ Delete '{rname}'", key=f"del_recipe_{rid}"):
-                try:
-                    conn = get_connection()
-                    cur = conn.cursor()
-                    cur.execute("DELETE FROM recipes WHERE id=%s;", (rid,))
-                    conn.commit()
-                    cur.close()
-                    conn.close()
-                    st.success(f"✅ Recipe '{rname}' deleted.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
+            # ── Delete with confirmation ──────────────────────────────────────
+            st.warning(f"⚠️ Deleting '{rname}' will also remove all its ingredient links.")
+            confirm = st.checkbox(f"Yes, I want to delete '{rname}'", key=f"confirm_del_recipe_{rid}")
+            if confirm:
+                if st.button(f"🗑️ Delete '{rname}'", key=f"del_recipe_{rid}"):
+                    try:
+                        conn = get_connection()
+                        cur = conn.cursor()
+                        cur.execute("DELETE FROM recipes WHERE id=%s;", (rid,))
+                        conn.commit()
+                        cur.close()
+                        conn.close()
+                        st.success(f"✅ Recipe '{rname}' deleted.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
