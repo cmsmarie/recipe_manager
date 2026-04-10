@@ -10,19 +10,29 @@ st.title("🥕 Manage Ingredients")
 
 # ── Add Ingredient Form ──────────────────────────────────────────────────────
 
+st.subheader("Add a New Ingredient")
 with st.form("add_ingredient_form"):
-    name = st.text_input("Ingredient Name")
-    category = st.text_input("Category (e.g. Dairy, Protein, Vegetable)")
+    name = st.text_input("Ingredient Name *")
+    category = st.text_input("Category * (e.g. Dairy, Protein, Vegetable)")
     submitted = st.form_submit_button("Add Ingredient")
 
     if submitted:
-        if name and category:
+        errors = []
+        if not name.strip():
+            errors.append("**Ingredient Name** is required.")
+        if not category.strip():
+            errors.append("**Category** is required.")
+
+        if errors:
+            for err in errors:
+                st.error(err)
+        else:
             try:
                 conn = get_connection()
                 cur = conn.cursor()
                 cur.execute(
                     "INSERT INTO ingredients (name, category) VALUES (%s, %s);",
-                    (name, category)
+                    (name.strip(), category.strip())
                 )
                 conn.commit()
                 cur.close()
@@ -32,19 +42,25 @@ with st.form("add_ingredient_form"):
                 st.error("⚠️ That ingredient already exists.")
             except Exception as e:
                 st.error(f"Error: {e}")
-        else:
-            st.warning("Please fill in both fields.")
 
 st.markdown("---")
 
-# ── Current Ingredients Table with Edit and Delete ───────────────────────────
+# ── Search/Filter ────────────────────────────────────────────────────────────
 
 st.subheader("Current Ingredients")
+search = st.text_input("🔍 Search ingredients by name or category")
 
 try:
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name, category FROM ingredients ORDER BY name;")
+    if search.strip():
+        cur.execute("""
+            SELECT id, name, category FROM ingredients
+            WHERE name ILIKE %s OR category ILIKE %s
+            ORDER BY name;
+        """, (f"%{search.strip()}%", f"%{search.strip()}%"))
+    else:
+        cur.execute("SELECT id, name, category FROM ingredients ORDER BY name;")
     ingredients = cur.fetchall()
     cur.close()
     conn.close()
@@ -53,7 +69,7 @@ except Exception as e:
     st.stop()
 
 if not ingredients:
-    st.info("No ingredients yet.")
+    st.info("No ingredients found.")
 else:
     for i in ingredients:
         iid, iname, icat = i
@@ -61,18 +77,27 @@ else:
 
             # ── Edit Form ────────────────────────────────────────────────────
             with st.form(f"edit_ingredient_{iid}"):
-                new_name = st.text_input("Ingredient Name", value=iname)
-                new_cat = st.text_input("Category", value=icat)
+                new_name = st.text_input("Ingredient Name *", value=iname)
+                new_cat = st.text_input("Category *", value=icat)
                 update = st.form_submit_button("💾 Save Changes")
 
                 if update:
-                    if new_name and new_cat:
+                    errors = []
+                    if not new_name.strip():
+                        errors.append("**Ingredient Name** is required.")
+                    if not new_cat.strip():
+                        errors.append("**Category** is required.")
+
+                    if errors:
+                        for err in errors:
+                            st.error(err)
+                    else:
                         try:
                             conn = get_connection()
                             cur = conn.cursor()
                             cur.execute(
                                 "UPDATE ingredients SET name=%s, category=%s WHERE id=%s;",
-                                (new_name, new_cat, iid)
+                                (new_name.strip(), new_cat.strip(), iid)
                             )
                             conn.commit()
                             cur.close()
@@ -81,19 +106,20 @@ else:
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
-                    else:
-                        st.warning("Please fill in both fields.")
 
-            # ── Delete Button ────────────────────────────────────────────────
-            if st.button(f"🗑️ Delete '{iname}'", key=f"del_ingredient_{iid}"):
-                try:
-                    conn = get_connection()
-                    cur = conn.cursor()
-                    cur.execute("DELETE FROM ingredients WHERE id=%s;", (iid,))
-                    conn.commit()
-                    cur.close()
-                    conn.close()
-                    st.success(f"✅ Ingredient '{iname}' deleted.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
+            # ── Delete with confirmation ──────────────────────────────────────
+            st.warning(f"⚠️ Deleting '{iname}' will also remove all its recipe links.")
+            confirm = st.checkbox(f"Yes, I want to delete '{iname}'", key=f"confirm_del_ingredient_{iid}")
+            if confirm:
+                if st.button(f"🗑️ Delete '{iname}'", key=f"del_ingredient_{iid}"):
+                    try:
+                        conn = get_connection()
+                        cur = conn.cursor()
+                        cur.execute("DELETE FROM ingredients WHERE id=%s;", (iid,))
+                        conn.commit()
+                        cur.close()
+                        conn.close()
+                        st.success(f"✅ Ingredient '{iname}' deleted.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
