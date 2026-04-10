@@ -30,7 +30,6 @@ with st.form("add_recipe_form"):
     cook_time = st.number_input("Cook Time (minutes) *", min_value=1, step=1)
     difficulty = st.selectbox("Difficulty *", difficulty_levels)
     submitted = st.form_submit_button("Add Recipe")
-
     if submitted:
         errors = []
         if not recipe_name.strip():
@@ -46,10 +45,7 @@ with st.form("add_recipe_form"):
             try:
                 conn = get_connection()
                 cur = conn.cursor()
-                cur.execute(
-                    "INSERT INTO recipes (recipe_name, description, cuisine, cook_time_minutes, difficulty_id) VALUES (%s, %s, %s, %s, %s);",
-                    (recipe_name.strip(), description.strip(), cuisine.strip(), cook_time, difficulty_options[difficulty])
-                )
+                cur.execute("INSERT INTO recipes (recipe_name, description, cuisine, cook_time_minutes, difficulty_id) VALUES (%s, %s, %s, %s, %s);", (recipe_name.strip(), description.strip(), cuisine.strip(), cook_time, difficulty_options[difficulty]))
                 conn.commit()
                 cur.close()
                 conn.close()
@@ -65,14 +61,9 @@ try:
     conn = get_connection()
     cur = conn.cursor()
     if search.strip():
-        cur.execute(
-            "SELECT r.id, r.recipe_name, r.cuisine, r.cook_time_minutes, d.level, r.description FROM recipes r JOIN difficulty d ON r.difficulty_id = d.id WHERE r.recipe_name ILIKE %s OR r.cuisine ILIKE %s ORDER BY r.recipe_name;",
-            ("%" + search.strip() + "%", "%" + search.strip() + "%")
-        )
+        cur.execute("SELECT r.id, r.recipe_name, r.cuisine, r.cook_time_minutes, d.level, r.description FROM recipes r JOIN difficulty d ON r.difficulty_id = d.id WHERE r.recipe_name ILIKE %s OR r.cuisine ILIKE %s ORDER BY r.recipe_name;", ("%" + search.strip() + "%", "%" + search.strip() + "%"))
     else:
-        cur.execute(
-            "SELECT r.id, r.recipe_name, r.cuisine, r.cook_time_minutes, d.level, r.description FROM recipes r JOIN difficulty d ON r.difficulty_id = d.id ORDER BY r.recipe_name;"
-        )
+        cur.execute("SELECT r.id, r.recipe_name, r.cuisine, r.cook_time_minutes, d.level, r.description FROM recipes r JOIN difficulty d ON r.difficulty_id = d.id ORDER BY r.recipe_name;")
     recipes = cur.fetchall()
     cur.close()
     conn.close()
@@ -99,7 +90,6 @@ else:
                 current_index = difficulty_levels.index(rdiff) if rdiff in difficulty_levels else 0
                 new_diff = st.selectbox("Difficulty *", difficulty_levels, index=current_index)
                 update = st.form_submit_button("Save Changes")
-
                 if update:
                     errors = []
                     if not new_name.strip():
@@ -112,3 +102,31 @@ else:
                         for err in errors:
                             st.error(err)
                     else:
+                        try:
+                            conn = get_connection()
+                            cur = conn.cursor()
+                            cur.execute("UPDATE recipes SET recipe_name=%s, description=%s, cuisine=%s, cook_time_minutes=%s, difficulty_id=%s WHERE id=%s;", (new_name.strip(), new_desc.strip(), new_cuisine.strip(), new_cook, difficulty_options[new_diff], rid))
+                            conn.commit()
+                            cur.close()
+                            conn.close()
+                            st.success("Recipe updated!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error("Error: " + str(e))
+            st.warning("Deleting " + rname + " will also remove all its ingredient links.")
+            confirm_key = "confirm_del_recipe_" + str(rid)
+            confirm = st.checkbox("Yes, I want to delete " + rname, key=confirm_key)
+            if confirm:
+                del_key = "del_recipe_" + str(rid)
+                if st.button("Delete " + rname, key=del_key):
+                    try:
+                        conn = get_connection()
+                        cur = conn.cursor()
+                        cur.execute("DELETE FROM recipes WHERE id=%s;", (rid,))
+                        conn.commit()
+                        cur.close()
+                        conn.close()
+                        st.success("Recipe " + rname + " deleted.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error("Error: " + str(e))
