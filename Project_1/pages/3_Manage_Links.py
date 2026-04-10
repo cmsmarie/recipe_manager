@@ -47,14 +47,18 @@ with st.form("add_link_form"):
         errors = []
         if not quantity.strip():
             errors.append("**Quantity** is required.")
-        else:
+
+        if not errors:
+            first_word = quantity.strip().split()[0]
+            is_negative = False
             try:
-                qty_num = float(quantity.strip().split()[0])
-                if qty_num <= 0:
-                    errors.append("**Quantity** must be a positive number.")
+                if float(first_word) <= 0:
+                    is_negative = True
             except ValueError:
-                errors.append("placeholder")
-                errors.remove("placeholder")
+                is_negative = False
+
+            if is_negative:
+                errors.append("**Quantity** must be a positive number.")
 
         if errors:
             for err in errors:
@@ -76,7 +80,7 @@ with st.form("add_link_form"):
                 st.success(f"✅ Linked '{selected_ingredient}' to '{selected_recipe}'!")
                 st.rerun()
             except psycopg2.errors.UniqueViolation:
-                st.error("⚠️ That ingredient is already linked to that recipe.")
+                st.error("That ingredient is already linked to that recipe.")
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -89,4 +93,45 @@ search = st.text_input("🔍 Search by recipe or ingredient name")
 
 try:
     conn = get_connection()
-    c
+    cur = conn.cursor()
+    if search.strip():
+        cur.execute("""
+            SELECT ri.id, r.recipe_name, i.name, ri.quantity, ri.linked_at
+            FROM recipe_ingredients ri
+            JOIN recipes r ON ri.recipe_id = r.id
+            JOIN ingredients i ON ri.ingredient_id = i.id
+            WHERE r.recipe_name ILIKE %s OR i.name ILIKE %s
+            ORDER BY r.recipe_name, i.name;
+        """, (f"%{search.strip()}%", f"%{search.strip()}%"))
+    else:
+        cur.execute("""
+            SELECT ri.id, r.recipe_name, i.name, ri.quantity, ri.linked_at
+            FROM recipe_ingredients ri
+            JOIN recipes r ON ri.recipe_id = r.id
+            JOIN ingredients i ON ri.ingredient_id = i.id
+            ORDER BY r.recipe_name, i.name;
+        """)
+    links = cur.fetchall()
+    cur.close()
+    conn.close()
+except Exception as e:
+    st.error(f"Error: {e}")
+    st.stop()
+
+if not links:
+    st.info("No links found.")
+else:
+    for l in links:
+        lid, lrecipe, lingredient, lqty, ltime = l
+        col1, col2, col3, col4, col5 = st.columns([3, 3, 2, 2, 1])
+        col1.write(lrecipe)
+        col2.write(lingredient)
+        col3.write(lqty)
+        col4.write(ltime.strftime("%Y-%m-%d %H:%M") if ltime else "")
+        if col5.button("🗑️", key=f"del_link_{lid}"):
+            st.session_state[f"confirm_link_{lid}"] = True
+
+        if st.session_state.get(f"confirm_link_{lid}"):
+            st.warning(f"Are you sure you want to delete the link between '{lrecipe}' and '{lingredient}'?")
+            col_yes, col_no = st.columns(2)
+            if col_yes.button("Yes, delete it", key=f"yes_link_{
