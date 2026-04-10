@@ -50,7 +50,7 @@ Junction table linking recipes to ingredients.
 ## How to Run Locally
 
 1. Clone the repository:
-   git clone https://github.com/your-username/your-repo-name.git
+   git clone https://github.com/cmsmarie/recipe_manager
 
 2. Install dependencies:
    pip install streamlit psycopg2-binary
