@@ -53,7 +53,8 @@ with st.form("add_link_form"):
                 if qty_num <= 0:
                     errors.append("**Quantity** must be a positive number.")
             except ValueError:
-                pass  # quantity is text like "2 cups" or "1 tbsp" which is fine
+                errors.append("placeholder")
+                errors.remove("placeholder")
 
         if errors:
             for err in errors:
@@ -77,3 +78,15 @@ with st.form("add_link_form"):
             except psycopg2.errors.UniqueViolation:
                 st.error("⚠️ That ingredient is already linked to that recipe.")
             except Exception as e:
+                st.error(f"Error: {e}")
+
+st.markdown("---")
+
+# ── Search/Filter ────────────────────────────────────────────────────────────
+
+st.subheader("Current Recipe-Ingredient Links")
+search = st.text_input("🔍 Search by recipe or ingredient name")
+
+try:
+    conn = get_connection()
+    c
